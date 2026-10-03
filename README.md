@@ -59,6 +59,7 @@ Open the app in your browser and check these examples:
 Also check that the sliders, dropdowns, example button, and reset button work.
 
 Browser used: chrome
+
 Test results: All six test cases matched the expected results in the table, including the stored values and overflow indicators.
 
 ## AI assistance
