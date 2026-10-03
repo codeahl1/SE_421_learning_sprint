@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Integer Overflow Explorer</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #101827;
+        color: #eef3ff;
+        font-family: system-ui, sans-serif;
+        line-height: 1.6;
+      }
+      main {
+        max-width: 850px;
+        margin: auto;
+      }
+      h1 {
+        line-height: 1.2;
+      }
+      section {
+        background: #1d293d;
+        border: 1px solid #41516a;
+        border-radius: 14px;
+        padding: 22px;
+        margin: 20px 0;
+      }
+      label {
+        display: block;
+        margin-top: 14px;
+      }
+      select,
+      input,
+      button {
+        font: inherit;
+        padding: 9px;
+        border-radius: 6px;
+      }
+      input[type="range"] {
+        width: 100%;
+      }
+      button {
+        background: #a9d8ff;
+        color: #101827;
+        border: 0;
+        cursor: pointer;
+        margin: 8px 8px 0 0;
+      }
+      button:hover {
+        background: #d1ebff;
+      }
+      :focus-visible {
+        outline: 3px solid #ffdb7d;
+        outline-offset: 3px;
+      }
+      .bits {
+        display: flex;
+        gap: 6px;
+        margin: 12px 0;
+      }
+      .bit {
+        flex: 1;
+        text-align: center;
+        background: #34445e;
+        padding: 10px 0;
+        border-radius: 6px;
+        font-family: monospace;
+        font-size: 1.4rem;
+      }
+      .one {
+        background: #a9d8ff;
+        color: #101827;
+      }
+      .result {
+        font-size: 1.4rem;
+        font-weight: bold;
+      }
+      .warning {
+        color: #ffdb7d;
+      }
+      .muted {
+        color: #c3cfe0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Integer Overflow Explorer</h1>
+      <p>
+        What happens when a result is too large for a fixed number of bits?
+        Experiment with addition and inspect the stored binary pattern.
+      </p>
+
+      <section>
+        <label for="width">Number of bits</label>
+        <select id="width">
+          <option value="4">4 bits</option>
+          <option value="8" selected>8 bits</option>
+        </select>
+
+        <label for="mode">Interpretation</label>
+        <select id="mode">
+          <option value="unsigned">Unsigned</option>
+          <option value="signed">Signed (two's complement)</option>
+        </select>
+
+        <p id="range"></p>
+
+        <label for="start"
+          >Starting value: <strong id="startLabel"></strong
+        ></label>
+        <input id="start" type="range" min="0" max="255" value="255" />
+
+        <label for="add">Amount to add: <strong id="addLabel"></strong></label>
+        <input id="add" type="range" min="0" max="20" value="1" />
+
+        <button id="boundary">Try maximum + 1</button>
+        <button id="reset">Reset to zero</button>
+      </section>
+
+      <section aria-live="polite" aria-atomic="true">
+        <h2>What gets stored?</h2>
+        <p id="calculation" class="result"></p>
+
+        <p>Starting bit pattern</p>
+        <div id="beforeBits" class="bits"></div>
+
+        <p>Stored result bit pattern</p>
+        <div id="afterBits" class="bits"></div>
+
+        <p id="stored" class="result"></p>
+        <p id="status"></p>
+        <p id="explanation"></p>
+        <p id="comparison" class="muted"></p>
+      </section>
+
+      <section>
+        <h2>Try these experiments</h2>
+        <ol>
+          <li>Select 8 bits and unsigned. Try 255 + 1.</li>
+          <li>Select signed. Try 127 + 1. Notice the leading bit.</li>
+          <li>Select 4 bits. Predict the result of unsigned 15 + 1.</li>
+          <li>Set the amount to add to zero. Does overflow occur?</li>
+        </ol>
+        <p>
+          With n bits, only 2ⁿ different patterns are available. Unsigned values
+          range from 0 to 2ⁿ − 1. Two's complement signed values range from
+          −2ⁿ⁻¹ to 2ⁿ⁻¹ − 1.
+        </p>
+        <p>
+          <strong>Model limitation:</strong> This app deliberately simulates
+          fixed-width wrapping. JavaScript does not ordinarily add numbers as
+          4-bit or 8-bit integers. In C and C++, signed integer overflow is
+          undefined behavior; this simulated signed wrap is not a guarantee of
+          those languages.
+        </p>
+      </section>
+    </main>
+
+    <script>
+      const el = (id) => document.getElementById(id);
+      const width = el("width");
+      const mode = el("mode");
+      const start = el("start");
+      const add = el("add");
+
+      function settings() {
+        const bits = Number(width.value);
+        const modulus = 2 ** bits;
+        const signed = mode.value === "signed";
+        return {
+          bits,
+          modulus,
+          min: signed ? -modulus / 2 : 0,
+          max: signed ? modulus / 2 - 1 : modulus - 1,
+        };
+      }
+
+      function wrap(value, modulus) {
+        return ((value % modulus) + modulus) % modulus;
+      }
+
+      function drawBits(id, value, bits) {
+        const binary = value.toString(2).padStart(bits, "0");
+        const container = el(id);
+        container.replaceChildren();
+        container.setAttribute("aria-label", "Binary " + binary);
+
+        for (const digit of binary) {
+          const cell = document.createElement("span");
+          cell.className = "bit" + (digit === "1" ? " one" : "");
+          cell.textContent = digit;
+          cell.setAttribute("aria-hidden", "true");
+          container.appendChild(cell);
+        }
+      }
+
+      function render() {
+        const { bits, modulus, min, max } = settings();
+        const a = Number(start.value);
+        const b = Number(add.value);
+        const exact = a + b;
+        const raw = wrap(exact, modulus);
+        const signedValue = raw >= modulus / 2 ? raw - modulus : raw;
+        const result = mode.value === "signed" ? signedValue : raw;
+        const overflow = exact < min || exact > max;
+
+        el("range").textContent =
+          `Representable range: ${min} through ${max} (${modulus} patterns).`;
+        el("startLabel").textContent = a;
+        el("addLabel").textContent = b;
+        el("calculation").textContent =
+          `Mathematical sum: ${a} + ${b} = ${exact}`;
+
+        drawBits("beforeBits", wrap(a, modulus), bits);
+        drawBits("afterBits", raw, bits);
+
+        el("stored").textContent = `Stored ${mode.value} result: ${result}`;
+        el("status").textContent = overflow
+          ? `Overflow: ${exact} is outside the selected range.`
+          : "No overflow: the mathematical sum fits in the selected range.";
+        el("status").className = overflow ? "warning" : "";
+
+        el("explanation").textContent =
+          `Keeping the lowest ${bits} bits gives the unsigned pattern value ` +
+          `${raw}. This is the mathematical sum modulo ${modulus}, expressed ` +
+          `as a nonnegative remainder.`;
+
+        el("comparison").textContent =
+          `The same result bits mean ${raw} when unsigned, or ${signedValue} ` +
+          `when interpreted as signed two's complement.`;
+      }
+
+      function configure() {
+        const { min, max } = settings();
+        const previous = Number(start.value);
+        start.min = min;
+        start.max = max;
+        start.value = Math.max(min, Math.min(max, previous));
+        render();
+      }
+
+      width.addEventListener("change", configure);
+      mode.addEventListener("change", configure);
+      start.addEventListener("input", render);
+      add.addEventListener("input", render);
+
+      el("boundary").addEventListener("click", () => {
+        start.value = settings().max;
+        add.value = 1;
+        render();
+      });
+
+      el("reset").addEventListener("click", () => {
+        start.value = 0;
+        add.value = 0;
+        render();
+      });
+
+      configure();
+    </script>
+  </body>
+</html>
